@@ -1,3 +1,5 @@
+#code for piping in the delta IDs gathered from deltalog, as well as trimming down to relevant columns
+
 import pandas as pd
 import os
 import csv

@@ -1,4 +1,4 @@
-#this file sorts the json by date and filters out records before a certain date
+#this file takes in the raw cmv data in JSON and sorts the json by date and filters out records before the date when deltas were assigned by detlabot
 
 import json
 import csv
@@ -76,7 +76,8 @@ def get_record_date(record):
         print("Skipping record: no valid date field found (neither 'created_utc' nor 'CreatedAt').")
         return None
 
-# Open CSV file for writing double object records immediately
+# Open CSV file for writing double object records immediately. There appear to be a few instances of double json objects in the input file.
+# This will help us identify and handle them separately.
 with open(double_objects_csv, 'w', newline='', encoding='utf-8') as csvfile:
     csv_writer = csv.writer(csvfile)
     csv_writer.writerow(["Object1", "Object2"])
