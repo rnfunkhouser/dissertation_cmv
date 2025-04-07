@@ -1,0 +1,4 @@
+This folder contains the data, code, results, and write-up for the project "Small Stories in Big Data" by Ryan Funkhouser. This project aims to test the influence of small stories on the outcomes of deliberations on r/ChangeMyView. To accomplish this, it will train a supervised machine learning text classification algorithm to identify which comments contain small stories and test the relationship between persuasive outcomes (receiving a 'delta' in the subreddit) and the presence or absence of small stories. It is currently (as of May 1st, 2024) a work in progress. 
+
+
+Link to the datafile can be found here: 
