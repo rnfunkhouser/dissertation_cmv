@@ -36,7 +36,8 @@ def process_csv_file(input_csv):
     df['is_tlc'] = df['is_tlc'].apply(to_bool)
     df['is_tlc_author'] = df['is_tlc_author'].apply(to_bool)
     df['is_submitter'] = df['is_submitter'].apply(to_bool)
-    
+    df['actually_has_delta'] = df['actually_has_delta'].apply(to_bool)
+
     qualified_conversations = []  # List to store each qualifying conversation (as a dict).
     
     # Group the DataFrame by tlc_id.
@@ -46,12 +47,23 @@ def process_csv_file(input_csv):
     for tlc_id, group in grouped:
         # Filter: conversation must have exactly 2 unique authors.
         unique_authors = group['author'].unique()
-        if len(unique_authors) != 2:
-            continue
         
+        if len(unique_authors) not in (2, 3):
+            continue
+        if len(unique_authors) == 3 and "DeltaBot" not in unique_authors:
+            continue
+
         # Filter: at least one comment must have is_submitter==True and one with is_tlc_author==True.
         if not group['is_submitter'].any() or not group['is_tlc_author'].any():
             continue
+        
+        # Filter out any group where a comment's author is "[removed]" or "[deleted]".
+        if group['author'].isin(["[removed]", "[deleted]"]).any():
+            continue
+
+        # Filter: only delta receiving ones
+        #if not group['actually_has_delta'].any():
+            #continue
         
         total_comments = len(group)
         
@@ -101,7 +113,7 @@ def main():
     all_qualified = process_all_files()
     print(f"Total qualified conversations from all files: {len(all_qualified)}")
     qualified_df = pd.DataFrame(all_qualified)
-    output_csv = os.path.join("..", "data", "qualified_conversations.csv")
+    output_csv = os.path.join("..", "data", "qualified_conversations_2.csv")
     qualified_df.to_csv(output_csv, index=False)
     print(f"Combined qualified conversations exported to {output_csv}")
 

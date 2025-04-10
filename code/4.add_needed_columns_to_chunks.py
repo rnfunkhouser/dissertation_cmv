@@ -1,5 +1,3 @@
-#adds data needed to reconstruct trees, such as top level comment data. 
-
 import csv
 import os
 from datetime import datetime, timezone
@@ -36,6 +34,8 @@ class RedditComment:
         self.tlc_id = None
         self.is_tlc_author = False
         self.children_count = None
+        self.actually_has_delta = False  
+        self.has_delta_from_OP = str(row.get("has_delta_from_OP", "")).strip().lower() in ["true"]
         # For building the comment tree
         self.children = []
     
@@ -62,6 +62,7 @@ class RedditComment:
         for child in self.children:
             count += child.total_children(visited)
         return count
+
 
 def process_chunk(filepath):
     """
@@ -99,16 +100,29 @@ def process_chunk(filepath):
         # Compute the total number of descendant comments for each comment.
         for comment in all_comments_dict.values():
             comment.children_count = comment.total_children()
-        
+
         return all_comments_dict
+
+def update_parent_delta_flags(all_comments_dict):
+    for comment in all_comments_dict.values():
+        if comment.has_delta_from_OP:
+            print(f"Child comment {comment.id} has delta flag set.")
+            if comment.parent_id.startswith("t1_"):
+                parent_id = comment.parent_id[3:]
+                parent_comment = all_comments_dict.get(parent_id)
+                if parent_comment:
+                    parent_comment.actually_has_delta = True
+                    print(f"  -> Parent comment {parent_id} marked with actually_has_delta.")
+                else:
+                    print(f"  -> Parent comment {parent_id} not found.")
 
 def update_csv_file(filepath):
     """
     Processes the CSV file to add new columns (is_tlc, tlc_id, is_tlc_author, children_count)
     and overwrites the original CSV with the updated data.
     """
-    
     all_comments = process_chunk(filepath)
+    update_parent_delta_flags(all_comments)
     
     # Create a new list of dictionaries from all_comments with the desired fields.
     updated_rows = []
@@ -121,6 +135,7 @@ def update_csv_file(filepath):
         row['tlc_id'] = comment.tlc_id
         row['is_tlc_author'] = comment.is_tlc_author
         row['children_count'] = comment.children_count
+        row['actually_has_delta'] = comment.actually_has_delta  
         
         # Also add the human-readable time column, posted_at
         row['posted_at'] = comment.posted_at.isoformat() if comment.posted_at else ""
