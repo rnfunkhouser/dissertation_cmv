@@ -2,7 +2,6 @@ import csv
 import os
 from datetime import datetime, timezone
 
-
 # Define the RedditComment class with new attributes and methods
 class RedditComment:
     def __init__(self, row):
@@ -12,31 +11,19 @@ class RedditComment:
         self.id = row['id']
         self.author = row['author']
         self.parent_id = row['parent_id']
-        self.body = row.get('body', '').strip()
-        # Store the original created_utc value
-        self.raw_created_utc = row.get('created_utc', '')
-        # Convert the raw_created_utc to a datetime object (posted_at)
-        utc_val = self.raw_created_utc
-        if utc_val:
-            try:
-                if isinstance(utc_val, str) and utc_val.isdigit():
-                    ts = int(utc_val)
-                else:
-                    ts = utc_val
-                self.posted_at = datetime.fromtimestamp(ts, tz=timezone.utc)
-            except Exception as e:
-                self.posted_at = None
-        else:
-            self.posted_at = None
+        self.body = (row.get('body') or '').strip()
         self.is_submitter = str(row.get('is_submitter', '')).strip().lower() in ["true"]
-        # New columns/attributes
-        self.is_tlc = True if self.parent_id.startswith("t3_") else False
+        if not self.parent_id:
+            print(f"Warning: Missing parent_id in row: {row}")
+        self.is_tlc = str(self.parent_id).startswith("t3_")
         self.tlc_id = None
         self.is_tlc_author = False
         self.children_count = None
         self.actually_has_delta = False  
-        self.has_delta_from_OP = str(row.get("has_delta_from_OP", "")).strip().lower() in ["true"]
-        # For building the comment tree
+        #Be aware that the column name "has_delta_from_OP" is a misnomer since that field is 
+        #actually True for the OP comment awarding the delta (starting June 23, 2018, which is why we begin July 2018) 
+        self.op_delta = str(row.get("has_delta_from_OP", "")).strip().lower() in ["true"] 
+        self.op_name = None
         self.children = []
     
     def assign_tlc_info(self, tlc_id, tlc_author, visited=None):
@@ -50,6 +37,10 @@ class RedditComment:
         self.is_tlc_author = (self.author == tlc_author)
         for child in self.children:
             child.assign_tlc_info(tlc_id, tlc_author, visited)
+
+    def assign_op_name(self):
+        if self.is_submitter:
+            self.op_name = self.author
     
     def total_children(self, visited=None):
         if visited is None:
@@ -69,7 +60,7 @@ def process_chunk(filepath):
     Reads a CSV chunk file, creates RedditComment objects, and rebuilds the comment tree.
     Returns a dictionary of all comments.
     """
-    with open(filepath, 'r', encoding='utf-8') as file:
+    with open(filepath, 'r', newline='', encoding='utf-8') as file:
         reader = csv.DictReader(file)
         all_comments_dict = {}
         top_level_comments = []
@@ -80,6 +71,9 @@ def process_chunk(filepath):
             if reddit_comment.is_tlc:
                 top_level_comments.append(reddit_comment)
             else:
+                if reddit_comment.parent_id is None:
+                    print(f"Skipping comment with missing parent_id: {reddit_comment.original}")
+                    continue
                 # For child comments, the parent's id is in parent_id with a "t1_" prefix removed.
                 parent_comment_id = reddit_comment.parent_id[3:]
                 parent_comment = all_comments_dict.get(parent_comment_id)
@@ -100,21 +94,28 @@ def process_chunk(filepath):
         # Compute the total number of descendant comments for each comment.
         for comment in all_comments_dict.values():
             comment.children_count = comment.total_children()
-
+            # Assign the OP name if this comment is the submitter.
+            if comment.is_submitter:
+                comment.assign_op_name()
         return all_comments_dict
 
 def update_parent_delta_flags(all_comments_dict):
+    parent_not_found_count = 0
+    delta_marked_count = 0
     for comment in all_comments_dict.values():
-        if comment.has_delta_from_OP:
-            print(f"Child comment {comment.id} has delta flag set.")
+        if comment.op_delta:
+            #print(f"Child comment {comment.id} has delta flag set.")
             if comment.parent_id.startswith("t1_"):
                 parent_id = comment.parent_id[3:]
                 parent_comment = all_comments_dict.get(parent_id)
                 if parent_comment:
                     parent_comment.actually_has_delta = True
-                    print(f"  -> Parent comment {parent_id} marked with actually_has_delta.")
+                    delta_marked_count += 1
                 else:
-                    print(f"  -> Parent comment {parent_id} not found.")
+                    parent_not_found_count += 1
+
+    print(f"Total comments marked with actually_has_delta: {delta_marked_count}")
+    print(f"Total parent comments not found: {parent_not_found_count}")
 
 def update_csv_file(filepath):
     """
@@ -130,19 +131,13 @@ def update_csv_file(filepath):
         # Start with the original row data
         row = comment.original.copy()
         
-        # Update or add new columns
+        # add new columns
         row['is_tlc'] = comment.is_tlc
         row['tlc_id'] = comment.tlc_id
         row['is_tlc_author'] = comment.is_tlc_author
         row['children_count'] = comment.children_count
         row['actually_has_delta'] = comment.actually_has_delta  
-        
-        # Also add the human-readable time column, posted_at
-        row['posted_at'] = comment.posted_at.isoformat() if comment.posted_at else ""
-        
-        # Ensure the raw created_utc remains (if present)
-        row['created_utc'] = comment.raw_created_utc
-        
+        row['op_name'] = comment.op_name
         updated_rows.append(row)
     
     if updated_rows:
@@ -153,7 +148,7 @@ def update_csv_file(filepath):
     
     # Overwrite the original CSV file with updated data.
     with open(filepath, 'w', newline='', encoding='utf-8') as f_out:
-        writer = csv.DictWriter(f_out, fieldnames=fieldnames)
+        writer = csv.DictWriter(f_out, fieldnames=fieldnames, quoting=csv.QUOTE_MINIMAL, escapechar='\\')
         writer.writeheader()
         writer.writerows(updated_rows)
     print(f"Updated CSV file saved: {filepath}")

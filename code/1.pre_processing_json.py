@@ -19,8 +19,8 @@ CHUNK_SIZE = 100000  # Process this many records at a time before sorting and wr
 count_created_at = 0
 count_created_utc = 0
 
-# Define cutoff date: Only keep records after July 4, 2017 (i.e. July 5th onward)
-cutoff_date = datetime.datetime(2017, 7, 4)
+# Define cutoff date: Only keep records after June, 2018 when url format changed
+cutoff_date = datetime.datetime(2018, 7, 1)
 
 # List to store temporary chunk file names
 chunk_files = []

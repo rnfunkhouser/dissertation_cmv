@@ -30,7 +30,7 @@ def search_ndjson(file_path, target_id):
 if __name__ == "__main__":
     # Manually set the file path to your NDJSON file
     file_path = "/Users/ryanfunkhouser/Documents/Research/official_cmv_computational_small_stories/data/changemyview_comments.json"  # Update this with your actual file path
-    target_id = "iyrsvzc"
+    target_id = "jl1ybbi"
     
     result = search_ndjson(file_path, target_id)
     

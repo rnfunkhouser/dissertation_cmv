@@ -7,6 +7,7 @@ import csv
 import os
 import datetime
 from collections import defaultdict
+import html
 
 def convert_utc_to_datetime(utc_timestamp):
     """Convert UTC timestamp to datetime object."""
@@ -151,12 +152,18 @@ def write_to_csv(comments, month_key, output_dir):
     fieldnames = list(comments[0].keys())
     
     with open(output_file, 'w', newline='', encoding='utf-8') as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames, quoting=csv.QUOTE_MINIMAL, escapechar='\\')
         writer.writeheader()
         
         for comment in comments:
-            # Ensure all fields exist (use None for missing fields)
-            row = {field: comment.get(field, None) for field in fieldnames}
+            row = {}
+            for field in fieldnames:
+                value = comment.get(field, None)
+                if field == 'body' and value is not None:
+                    value = html.unescape(value)
+                    value = value.replace('"', '""')
+                    value = f'"{value}"'
+                row[field] = value
             writer.writerow(row)
 
 if __name__ == '__main__':

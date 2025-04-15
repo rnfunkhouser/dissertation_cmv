@@ -19,10 +19,13 @@ After processing all CSV files, the script combines the results and exports them
 import pandas as pd
 import glob
 import os
+import csv
 
 def process_csv_file(input_csv):
     print(f"Loading data from {input_csv}...")
-    df = pd.read_csv(input_csv)
+    # Use newline='' to ensure embedded line breaks in fields (like \r or \n in 'body') are handled properly
+    with open(input_csv, 'r', newline='', encoding='utf-8') as f:
+        df = pd.read_csv(f)
     print(f"Total rows loaded: {len(df)}")
     
     # Convert potential string boolean values to actual booleans.
@@ -50,6 +53,7 @@ def process_csv_file(input_csv):
         
         if len(unique_authors) not in (2, 3):
             continue
+        #deltabot can be the third author besides the tlc author and the OP
         if len(unique_authors) == 3 and "DeltaBot" not in unique_authors:
             continue
 
@@ -61,7 +65,8 @@ def process_csv_file(input_csv):
         if group['author'].isin(["[removed]", "[deleted]"]).any():
             continue
 
-        # Filter: only delta receiving ones
+
+        #Filter: only delta receiving ones
         #if not group['actually_has_delta'].any():
             #continue
         
@@ -113,8 +118,11 @@ def main():
     all_qualified = process_all_files()
     print(f"Total qualified conversations from all files: {len(all_qualified)}")
     qualified_df = pd.DataFrame(all_qualified)
-    output_csv = os.path.join("..", "data", "qualified_conversations_2.csv")
-    qualified_df.to_csv(output_csv, index=False)
+    
+    output_csv = os.path.join("..", "data", "clean_qualified_conversations_4.csv")
+    # Use newline='' to ensure embedded line breaks in fields like 'body' are written correctly across platforms
+    with open(output_csv, 'w', newline='', encoding='utf-8') as f:
+        qualified_df.to_csv(f, index=False, quoting=csv.QUOTE_MINIMAL, escapechar='\\')
     print(f"Combined qualified conversations exported to {output_csv}")
 
 if __name__ == "__main__":
