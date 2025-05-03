@@ -4,5 +4,8 @@
 # ignore docs
 /docs/
 
+#ignore models
+/models/
+
 # Ignore macOS system files
 .DS_Storemodels/
