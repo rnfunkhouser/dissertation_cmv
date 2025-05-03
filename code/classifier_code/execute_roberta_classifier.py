@@ -13,6 +13,7 @@ from transformers import RobertaTokenizerFast
 from train_multitask_roberta import (  # reuse dataset + model defs
     StoryDataset, MultiHeadStoryModel, MODEL_NAME
 )
+from transformers import RobertaModel
 
 # ── CONFIG ────────────────────────────────────────────────────────────────
 MODEL_DIR     = Path("../models/story_multitask/final_best")
@@ -22,8 +23,7 @@ BATCH_SIZE    = 32
 
 # ── Load tokenizer & model ────────────────────────────────────────────────
 tokenizer = RobertaTokenizerFast.from_pretrained(MODEL_DIR)
-encoder   = MultiHeadStoryModel.encoder
-encoder   = encoder.from_pretrained(MODEL_DIR)  # load fine-tuned weights
+encoder   = RobertaModel.from_pretrained(MODEL_DIR)      # fine‑tuned weights
 model     = MultiHeadStoryModel(encoder).eval().cuda()
 
 # ── Prepare dataset & loader ──────────────────────────────────────────────
@@ -34,30 +34,50 @@ loader  = torch.utils.data.DataLoader(ds,
                                       shuffle=False,
                                       num_workers=4)
 
-# ── Inference loop ────────────────────────────────────────────────────────
-pred_rows: List[Dict] = []
+# ── Inference loop + window aggregation ───────────────────────────────────
+from collections import Counter, defaultdict
+
+agg = defaultdict(lambda: {"story": [], "cent": [], "hyp": [], "per": []})
+
 with torch.no_grad():
     for batch in tqdm(loader, desc="Predict"):
+        row_ids   = batch.pop("row_id")                 # tensor of ids
         input_ids = batch["input_ids"].cuda()
         attention = batch["attention_mask"].cuda()
+
         out = model(input_ids=input_ids, attention_mask=attention)
 
-        story_prob = torch.sigmoid(out["logits_story"])
-        hyp_prob   = torch.sigmoid(out["logits_hyp"])
-        per_prob   = torch.sigmoid(out["logits_per"])
-        cent_pred  = out["logits_cent"].softmax(-1).argmax(-1)
+        story_prob = torch.sigmoid(out["logits_story"]).cpu().numpy()
+        hyp_prob   = torch.sigmoid(out["logits_hyp"]).cpu().numpy()
+        per_prob   = torch.sigmoid(out["logits_per"]).cpu().numpy()
+        cent_pred  = out["logits_cent"].softmax(-1).argmax(-1).cpu().numpy()
 
-        # detach → cpu → numpy
-        pred_rows.extend(zip(story_prob.cpu().numpy(),
-                             cent_pred.cpu().numpy(),
-                             hyp_prob.cpu().numpy(),
-                             per_prob.cpu().numpy()))
+        for rid, s, c, h, p in zip(row_ids.cpu().tolist(),
+                                   story_prob, cent_pred, hyp_prob, per_prob):
+            agg[rid]["story"].append(float(s))
+            agg[rid]["cent"].append(int(c))
+            agg[rid]["hyp"].append(float(h))
+            agg[rid]["per"].append(float(p))
 
-# ── Post-processing for sliding-window aggregation (simple version) ───────
-# If a comment was split into windows, take max probabilities / majority vote.
-# NB: This simplified example assumes ds.rows aligns 1-to-1 with df rows.
-# If you used multiple windows, you would need to aggregate by original row id.
-story_pred, cent_pred, hyp_pred, per_pred = map(list, zip(*pred_rows))
+# ── Aggregate to comment‑level predictions ────────────────────────────────
+story_pred, cent_pred, hyp_pred, per_pred = [], [], [], []
+for idx in range(len(df_full)):
+    wins = agg[idx]
+    if not wins["story"]:                       # safeguard (very short comments)
+        story_pred.append(0.0)
+        cent_pred.append(0)
+        hyp_pred.append(0.0)
+        per_pred.append(0.0)
+        continue
+
+    story_max = max(wins["story"])              # max prob across windows
+    story_pred.append(story_max)
+
+    cent_mode = Counter(wins["cent"]).most_common(1)[0][0]
+    cent_pred.append(cent_mode)
+
+    hyp_pred.append(max(wins["hyp"]))
+    per_pred.append(max(wins["per"]))
 
 df_full["story_flag"] = [int(p > 0.5) for p in story_pred]
 df_full["centrality"] = cent_pred
